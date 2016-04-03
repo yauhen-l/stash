@@ -136,6 +136,8 @@ type (
 		Description string `json:"description"`
 		FromRef     Ref    `json:"fromRef"`
 		ToRef       Ref    `json:"toRef"`
+		CreatedDate int64  `json:"createdDate"`
+		UpdatedDate int64  `json:"updatedDate"`
 	}
 
 	Ref struct {
