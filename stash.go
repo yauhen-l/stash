@@ -868,7 +868,6 @@ func consumeResponse(req *http.Request) (rc int, buffer []byte, err error) {
 	}()
 
 	if err != nil {
-		fmt.Printf("@@ err: %v\n", err)
 		panic(err)
 	}
 
