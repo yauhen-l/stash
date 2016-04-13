@@ -35,6 +35,7 @@ type (
 		GetRawFile(projectKey, repositorySlug, branch, filePath string) ([]byte, error)
 		CreatePullRequest(projectKey, repositorySlug, title, description, fromRef, toRef string, reviewers []string) (PullRequest, error)
 		DeleteBranch(projectKey, repositorySlug, branchName string) error
+		GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error)
 	}
 
 	Client struct {
@@ -181,6 +182,16 @@ type (
 		FromRef     PullRequestRef `json:"fromRef"`
 		ToRef       PullRequestRef `json:"toRef"`
 		Reviewers   []Reviewer     `json:"reviewers"`
+	}
+
+	Commit struct {
+		ID        string `json:"id"`
+		DisplayID string `json:"displayId"`
+		Author    struct {
+			Name         string `json:"name"`
+			EmailAddress string `json:"emailAddress"`
+		} `json:"author"`
+		AuthorTimestamp int64 `json:"authorTimestamp"` // in milliseconds since the epoch
 	}
 )
 
@@ -759,6 +770,57 @@ func (client Client) GetRawFile(repositoryProjectKey, repositorySlug, filePath, 
 	return data, retry.Try(work)
 }
 
+// GetCommit returns a representation of the given commit hash.
+func (client Client) GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error) {
+	retry := retry.New(5*time.Second, 3, func(attempts uint) {
+		if attempts == 0 {
+			return
+		}
+		time.Sleep((1 << attempts) * 250 * time.Millisecond)
+	})
+
+	var data []byte
+	work := func() error {
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/commits/%s", client.baseURL.String(), projectKey, repositorySlug, commitHash), nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/json")
+
+		if client.userName != "" && client.password != "" {
+			req.SetBasicAuth(client.userName, client.password)
+		}
+
+		var responseCode int
+		responseCode, data, err = consumeResponse(req)
+		if err != nil {
+			return err
+		}
+
+		if responseCode != http.StatusOK {
+			var reason string = "unhandled reason"
+			switch {
+			case responseCode == http.StatusBadRequest:
+				reason = "Bad Request"
+			case responseCode == http.StatusUnauthorized:
+				reason = "Unauthorized"
+			case responseCode == http.StatusNotFound:
+				reason = "Not found"
+			}
+			return errorResponse{StatusCode: responseCode, Reason: reason}
+		}
+		return nil
+	}
+
+	if err := retry.Try(work); err != nil {
+		return Commit{}, err
+	}
+
+	var commit Commit
+	err := json.Unmarshal(data, &commit)
+	return commit, err
+}
+
 func HasRepository(repositories map[int]Repository, url string) (Repository, bool) {
 	for _, repo := range repositories {
 		for _, clone := range repo.Links.Clones {
@@ -806,6 +868,7 @@ func consumeResponse(req *http.Request) (rc int, buffer []byte, err error) {
 	}()
 
 	if err != nil {
+		fmt.Printf("@@ err: %v\n", err)
 		panic(err)
 	}
 

@@ -2,5 +2,5 @@ all:
 	go fmt
 	go vet
 	go clean
-	godep go test -v
-	godep go build
+	GO15VENDOREXPERIMENT=0 godep go test 
+	GO15VENDOREXPERIMENT=0 godep go build
