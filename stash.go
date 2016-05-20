@@ -36,6 +36,7 @@ type (
 		CreatePullRequest(projectKey, repositorySlug, title, description, fromRef, toRef string, reviewers []string) (PullRequest, error)
 		DeleteBranch(projectKey, repositorySlug, branchName string) error
 		GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error)
+		GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error)
 	}
 
 	Client struct {
@@ -105,6 +106,7 @@ type (
 	Tag struct {
 		ID        string `json:"id"`
 		DisplayID string `json:"displayId"`
+		Hash      string `json:"hash"`
 	}
 
 	BranchRestrictions struct {
@@ -192,6 +194,13 @@ type (
 			EmailAddress string `json:"emailAddress"`
 		} `json:"author"`
 		AuthorTimestamp int64 `json:"authorTimestamp"` // in milliseconds since the epoch
+		Attributes      struct {
+			JiraKeys []string `json:"jira-key"`
+		} `json:"attributes"`
+	}
+
+	Commits struct {
+		Commits []Commit `json:"values"`
 	}
 )
 
@@ -819,6 +828,57 @@ func (client Client) GetCommit(projectKey, repositorySlug, commitHash string) (C
 	var commit Commit
 	err := json.Unmarshal(data, &commit)
 	return commit, err
+}
+
+// GetCommits returns the commits between two hashes, inclusively.
+func (client Client) GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error) {
+	retry := retry.New(5*time.Second, 3, func(attempts uint) {
+		if attempts == 0 {
+			return
+		}
+		time.Sleep((1 << attempts) * 250 * time.Millisecond)
+	})
+
+	var data []byte
+	work := func() error {
+		req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/commits?since=%s&until=%s&limit=1000", client.baseURL.String(), projectKey, repositorySlug, commitSinceHash, commitUntilHash), nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/json")
+
+		if client.userName != "" && client.password != "" {
+			req.SetBasicAuth(client.userName, client.password)
+		}
+
+		var responseCode int
+		responseCode, data, err = consumeResponse(req)
+		if err != nil {
+			return err
+		}
+
+		if responseCode != http.StatusOK {
+			var reason string = "unhandled reason"
+			switch {
+			case responseCode == http.StatusBadRequest:
+				reason = "Bad Request"
+			case responseCode == http.StatusUnauthorized:
+				reason = "Unauthorized"
+			case responseCode == http.StatusNotFound:
+				reason = "Not found"
+			}
+			return errorResponse{StatusCode: responseCode, Reason: reason}
+		}
+		return nil
+	}
+
+	if err := retry.Try(work); err != nil {
+		return Commits{}, err
+	}
+
+	var commits Commits
+	err := json.Unmarshal(data, &commits)
+	return commits, err
 }
 
 func HasRepository(repositories map[int]Repository, url string) (Repository, bool) {
