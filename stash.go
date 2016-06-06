@@ -688,13 +688,13 @@ func (client Client) CreatePullRequest(projectKey, repositorySlug, title, descri
 		var reason string = "unknown reason"
 		switch {
 		case responseCode == http.StatusBadRequest:
-			reason = "The repository was not created due to a validation error."
+			reason = "The pull-request was not created due to a validation error."
 		case responseCode == http.StatusUnauthorized:
-			reason = "The currently authenticated user has insufficient permissions to create a repository."
+			reason = "The currently authenticated user has insufficient permissions to create a pull-request."
 		case responseCode == http.StatusNotFound:
 			reason = "The resource was not found.  Does the project key exist?"
 		case responseCode == http.StatusConflict:
-			reason = "A repository with same name already exists."
+			reason = "A pull-request with same name already exists."
 		}
 		return PullRequest{}, errorResponse{StatusCode: responseCode, Reason: reason}
 	}
