@@ -32,6 +32,7 @@ type (
 		DeleteBranchRestriction(projectKey, repositorySlug string, id int) error
 		GetRepository(projectKey, repositorySlug string) (Repository, error)
 		GetPullRequests(projectKey, repositorySlug, state string) ([]PullRequest, error)
+		GetPullRequest(projectKey, repositorySlug, identifier string) (PullRequest, error)
 		GetRawFile(projectKey, repositorySlug, branch, filePath string) ([]byte, error)
 		CreatePullRequest(projectKey, repositorySlug, title, description, fromRef, toRef string, reviewers []string) (PullRequest, error)
 		DeleteBranch(projectKey, repositorySlug, branchName string) error
@@ -143,6 +144,10 @@ type (
 		UpdatedDate int64  `json:"updatedDate"`
 	}
 
+	Comment struct {
+		ID int `json:"id"`
+	}
+
 	Ref struct {
 		DisplayID string `json:"displayId"`
 	}
@@ -184,6 +189,10 @@ type (
 		FromRef     PullRequestRef `json:"fromRef"`
 		ToRef       PullRequestRef `json:"toRef"`
 		Reviewers   []Reviewer     `json:"reviewers"`
+	}
+
+	CommentResource struct {
+		Text       string         `json:"text"`
 	}
 
 	Commit struct {
@@ -639,6 +648,56 @@ func (client Client) GetPullRequests(projectKey, projectSlug, state string) ([]P
 		start = r.NextPageStart
 	}
 	return pullRequests, nil
+}
+
+// GetPullRequest returns a pull request for a project/slug with specified
+// identifier.
+func (client Client) GetPullRequest(
+	projectKey, projectSlug, identifier string,
+) (PullRequest, error) {
+	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+	var data []byte
+	work := func() error {
+		req, err := http.NewRequest(
+			"GET",
+			fmt.Sprintf(
+				"%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%s",
+				client.baseURL.String(), projectKey, projectSlug, identifier,
+			),
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/json")
+		req.SetBasicAuth(client.userName, client.password)
+
+		var responseCode int
+		responseCode, data, err = consumeResponse(req)
+		if err != nil {
+			return err
+		}
+		if responseCode != http.StatusOK {
+			var reason string = "unhandled reason"
+			switch {
+			case responseCode == http.StatusBadRequest:
+				reason = "Bad request."
+			}
+			return errorResponse{StatusCode: responseCode, Reason: reason}
+		}
+		return nil
+	}
+	if err := retry.Try(work); err != nil {
+		return PullRequest{}, err
+	}
+
+	var r PullRequest
+	err := json.Unmarshal(data, &r)
+	if err != nil {
+		return PullRequest{}, err
+	}
+
+	return r, nil
 }
 
 // CreatePullRequest creates a pull request between branches.

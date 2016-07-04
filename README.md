@@ -80,6 +80,13 @@ state := "OPEN"
 pullRequests, err := stashClient.GetPullRequests("PROJ", "slug", state)
 ```
 
+### GetPullRequest
+
+```go
+// get pull request by id
+pullRequest, err := stashClient.GetPullRequest("PROJ", "slug", 1)
+```
+
 ### CreatePullRequest
 
 ```go
