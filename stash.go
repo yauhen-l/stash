@@ -38,6 +38,7 @@ type (
 		DeleteBranch(projectKey, repositorySlug, branchName string) error
 		GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error)
 		GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error)
+		CreateComment(projectKey, repositorySlug, pullRequest, text string) (Comment, error)
 	}
 
 	Client struct {
@@ -132,7 +133,7 @@ type (
 	}
 
 	PullRequest struct {
-		ID          int    `id:"closed"`
+		ID          int    `json:"id"`
 		Closed      bool   `json:"closed"`
 		Open        bool   `json:"open"`
 		State       string `json:"state"`
@@ -192,7 +193,7 @@ type (
 	}
 
 	CommentResource struct {
-		Text       string         `json:"text"`
+		Text string `json:"text"`
 	}
 
 	Commit struct {
@@ -698,6 +699,65 @@ func (client Client) GetPullRequest(
 	}
 
 	return r, nil
+}
+
+// CreateComment creates a comment for a pull-request.
+func (client Client) CreateComment(
+	projectKey, repositorySlug, pullRequest, text string,
+) (Comment, error) {
+	resource := CommentResource{
+		Text: text,
+	}
+
+	reqBody, err := json.Marshal(resource)
+	if err != nil {
+		return Comment{}, err
+	}
+
+	req, err := http.NewRequest(
+		"POST",
+		fmt.Sprintf(
+			"%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%s/comments",
+			client.baseURL.String(),
+			projectKey,
+			repositorySlug,
+			pullRequest,
+		),
+		bytes.NewBuffer(reqBody),
+	)
+	if err != nil {
+		return Comment{}, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-type", "application/json")
+	req.SetBasicAuth(client.userName, client.password)
+
+	responseCode, data, err := consumeResponse(req)
+	if err != nil {
+		return Comment{}, err
+	}
+	if responseCode != http.StatusCreated {
+		var reason string = "unknown reason"
+		switch {
+		case responseCode == http.StatusBadRequest:
+			reason = "The comment was not created due to a validation error."
+		case responseCode == http.StatusUnauthorized:
+			reason = "The currently authenticated user has insufficient permissions to create a comment."
+		case responseCode == http.StatusNotFound:
+			reason = "The resource was not found.  Does the project key exist?"
+		}
+
+		return Comment{}, errorResponse{StatusCode: responseCode, Reason: reason}
+	}
+
+	var t Comment
+	err = json.Unmarshal(data, &t)
+	if err != nil {
+		return Comment{}, err
+	}
+
+	return t, nil
 }
 
 // CreatePullRequest creates a pull request between branches.

@@ -99,6 +99,12 @@ reviewers := []string{"bob", "bill"}
 pullRequest, err := stashClient.CreatePullRequest("PROJ", "slug", title, desc, from, to, reviewers)
 ```
 
+### CreateComment
+
+```go
+comment, err := stashClient.CreateComment("PROJ", "slug", 1, "build passing")
+```
+
 ### GetRawFile
 
 ```go
