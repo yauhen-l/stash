@@ -80,6 +80,13 @@ state := "OPEN"
 pullRequests, err := stashClient.GetPullRequests("PROJ", "slug", state)
 ```
 
+### GetPullRequest
+
+```go
+// get pull request by id
+pullRequest, err := stashClient.GetPullRequest("PROJ", "slug", 1)
+```
+
 ### CreatePullRequest
 
 ```go
@@ -90,6 +97,12 @@ to        := "develop"
 reviewers := []string{"bob", "bill"}
 
 pullRequest, err := stashClient.CreatePullRequest("PROJ", "slug", title, desc, from, to, reviewers)
+```
+
+### CreateComment
+
+```go
+comment, err := stashClient.CreateComment("PROJ", "slug", 1, "build passing")
 ```
 
 ### GetRawFile
