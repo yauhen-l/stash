@@ -4,8 +4,8 @@ import "testing"
 
 func TestGetSshUrl(t *testing.T) {
 	clones := []Clone{
-		Clone{Name: "ssh", HREF: "ssh-url"},
-		Clone{Name: "http", HREF: "http-url"},
+		{Name: "ssh", HREF: "ssh-url"},
+		{Name: "http", HREF: "http-url"},
 	}
 	links := Links{Clones: clones}
 	repository := Repository{Links: links}
@@ -17,7 +17,7 @@ func TestGetSshUrl(t *testing.T) {
 
 func TestGetSshUrlMissing(t *testing.T) {
 	clones := []Clone{
-		Clone{Name: "http", HREF: "http-url"},
+		{Name: "http", HREF: "http-url"},
 	}
 	links := Links{Clones: clones}
 	repository := Repository{Links: links}
