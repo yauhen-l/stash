@@ -259,7 +259,7 @@ func (client Client) CreateRepository(projectKey, projectSlug string) (Repositor
 		case responseCode == http.StatusUnauthorized:
 			reason = "The currently authenticated user has insufficient permissions to create a repository."
 		case responseCode == http.StatusNotFound:
-			reason = "The resource was not found.  Does the project key exist?"
+			reason = "The resource was not found. Does the project key exist?"
 		case responseCode == http.StatusConflict:
 			reason = "A repository with same name already exists."
 		}
@@ -512,7 +512,7 @@ func (client Client) CreateBranchRestriction(projectKey, repositorySlug, branch,
 		case responseCode == http.StatusUnauthorized:
 			reason = "The currently authenticated user has insufficient permissions to create a branch restriction."
 		case responseCode == http.StatusNotFound:
-			reason = "The resource was not found.  Does the project key exist? What about the repo?  The user?  The branch?"
+			reason = "The resource was not found. Does the project key exist? What about the repo?  The user?  The branch?"
 		case responseCode == http.StatusConflict:
 			reason = "A branch restriction with same name already exists."
 		}
@@ -653,9 +653,7 @@ func (client Client) GetPullRequests(projectKey, projectSlug, state string) ([]P
 
 // GetPullRequest returns a pull request for a project/slug with specified
 // identifier.
-func (client Client) GetPullRequest(
-	projectKey, projectSlug, identifier string,
-) (PullRequest, error) {
+func (client Client) GetPullRequest(projectKey, projectSlug, identifier string) (PullRequest, error) {
 	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
 	var data []byte
 	work := func() error {
@@ -671,7 +669,10 @@ func (client Client) GetPullRequest(
 			return err
 		}
 		req.Header.Set("Accept", "application/json")
-		req.SetBasicAuth(client.userName, client.password)
+		// use credentials if we have them.  If not, the repository must be public.
+		if client.userName != "" && client.password != "" {
+			req.SetBasicAuth(client.userName, client.password)
+		}
 
 		var responseCode int
 		responseCode, data, err = consumeResponse(req)
@@ -683,6 +684,10 @@ func (client Client) GetPullRequest(
 			switch {
 			case responseCode == http.StatusBadRequest:
 				reason = "Bad request."
+			case responseCode == http.StatusUnauthorized:
+				reason = "The currently authenticated user has insufficient permissions to see a pull request."
+			case responseCode == http.StatusNotFound:
+				reason = "The resource was not found. Does the project key exist?"
 			}
 			return errorResponse{StatusCode: responseCode, Reason: reason}
 		}
@@ -702,9 +707,7 @@ func (client Client) GetPullRequest(
 }
 
 // CreateComment creates a comment for a pull-request.
-func (client Client) CreateComment(
-	projectKey, repositorySlug, pullRequest, text string,
-) (Comment, error) {
+func (client Client) CreateComment(projectKey, repositorySlug, pullRequest, text string) (Comment, error) {
 	resource := CommentResource{
 		Text: text,
 	}
@@ -745,7 +748,7 @@ func (client Client) CreateComment(
 		case responseCode == http.StatusUnauthorized:
 			reason = "The currently authenticated user has insufficient permissions to create a comment."
 		case responseCode == http.StatusNotFound:
-			reason = "The resource was not found.  Does the project key exist?"
+			reason = "The resource was not found. Does the project key exist?"
 		}
 
 		return Comment{}, errorResponse{StatusCode: responseCode, Reason: reason}
@@ -820,7 +823,7 @@ func (client Client) CreatePullRequest(projectKey, repositorySlug, title, descri
 		case responseCode == http.StatusUnauthorized:
 			reason = "The currently authenticated user has insufficient permissions to create a pull-request."
 		case responseCode == http.StatusNotFound:
-			reason = "The resource was not found.  Does the project key exist?"
+			reason = "The resource was not found. Does the project key exist?"
 		case responseCode == http.StatusConflict:
 			reason = "A pull-request with same name already exists."
 		}
