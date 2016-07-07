@@ -105,6 +105,16 @@ pullRequest, err := stashClient.CreatePullRequest("PROJ", "slug", title, desc, f
 comment, err := stashClient.CreateComment("PROJ", "slug", 1, "build passing")
 ```
 
+### UpdatePullRequest
+
+```go
+title     := "New title"
+desc      := "New description"
+branch    := "master"
+
+pullRequest, err := stashClient.UpdatePullRequest("PROJ", "slug", "1", 10, title, desc, branch, nil)
+```
+
 ### GetRawFile
 
 ```go

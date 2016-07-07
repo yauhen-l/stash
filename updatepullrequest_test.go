@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-const createPullRequestResponse string = `
+const updatePullRequestResponse string = `
 {
-    "id": 2,
-    "version": 0,
+    "id": 1,
+    "version": 101,
     "title": "a title",
     "description": "a description",
     "state": "OPEN",
@@ -223,28 +223,23 @@ const createPullRequestResponse string = `
 }
 `
 
-type PullRequestTemplate struct {
-	Title       string
-	Description string
-}
+func TestUpdatePullRequest(t *testing.T) {
 
-func TestCreatePullRequest(t *testing.T) {
-
-	expectedRequestBody := `{"title":"a title","description":"a description","fromRef":{"id":"feature/file1","repository":{"slug":"bar","project":{"key":"proj"}}},"toRef":{"id":"develop","repository":{"slug":"bar","project":{"key":"proj"}}},"reviewers":[{"user":{"name":"bob"}},{"user":{"name":"bill"}}]}`
+	expectedRequestBody := `{"version":100,"title":"a title","description":"a description","toRef":{"id":"develop","repository":{"slug":"bar","project":{"key":"proj"}}},"reviewers":[{"user":{"name":"bob"}},{"user":{"name":"bill"}}]}`
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Fatalf("wanted POST but found %s\n", r.Method)
+		if r.Method != "PUT" {
+			t.Fatalf("wanted PUT but found %s\n", r.Method)
 		}
 		url := *r.URL
-		if url.Path != "/rest/api/1.0/projects/proj/repos/bar/pull-requests" {
-			t.Fatalf("CreatePullRequest() URL path expected to be /rest/api/1.0/projects/proj/repos/bar/pull-requests but found %s\n", url.Path)
+		if url.Path != "/rest/api/1.0/projects/proj/repos/bar/pull-requests/1" {
+			t.Fatalf("UpdatePullRequest() URL path expected to be /rest/api/1.0/projects/proj/repos/bar/pull-requests/1 but found %s\n", url.Path)
 		}
 		if r.Header.Get("Accept") != "application/json" {
-			t.Fatalf("CreatePullRequest() expected request Accept header to be application/json but found %s\n", r.Header.Get("Accept"))
+			t.Fatalf("UpdatePullRequest() expected request Accept header to be application/json but found %s\n", r.Header.Get("Accept"))
 		}
 		if r.Header.Get("Authorization") != "Basic dTpw" {
-			t.Fatalf("Want  Basic dTpw but found %s\n", r.Header.Get("Authorization"))
+			t.Fatalf("Want Basic dTpw but found %s\n", r.Header.Get("Authorization"))
 		}
 
 		body, _ := ioutil.ReadAll(r.Body)
@@ -252,8 +247,8 @@ func TestCreatePullRequest(t *testing.T) {
 			t.Fatalf("Unexpected request body\n %s\n expected\n %s\n", body, expectedRequestBody)
 		}
 
-		w.WriteHeader(201)
-		fmt.Fprint(w, createPullRequestResponse)
+		w.WriteHeader(200)
+		fmt.Fprint(w, updatePullRequestResponse)
 	}))
 	defer testServer.Close()
 
@@ -261,12 +256,12 @@ func TestCreatePullRequest(t *testing.T) {
 	stashClient := NewClient("u", "p", url)
 
 	reviewers := []string{"bob", "bill"}
-	pullRequest, err := stashClient.CreatePullRequest("proj", "bar", "a title", "a description", "feature/file1", "develop", reviewers)
+	pullRequest, err := stashClient.UpdatePullRequest("proj", "bar", "1", 100, "a title", "a description", "develop", reviewers)
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
 
-	expect_to_equal(t, "ID", 2, pullRequest.ID)
+	expect_to_equal(t, "ID", 1, pullRequest.ID)
 	expect_to_equal(t, "Title", "a title", pullRequest.Title)
 	expect_to_equal(t, "Description", "a description", pullRequest.Description)
 	expect_to_equal(t, "Open", true, pullRequest.Open)
@@ -274,10 +269,4 @@ func TestCreatePullRequest(t *testing.T) {
 	expect_to_equal(t, "FromRef", Ref{"feature/file1"}, pullRequest.FromRef)
 	expect_to_equal(t, "ToRef", Ref{"develop"}, pullRequest.ToRef)
 
-}
-
-func expect_to_equal(t *testing.T, item string, expected interface{}, actual interface{}) {
-	if actual != expected {
-		t.Fatalf("expected %s to be <%T>%q got <%T>%q\n", item, actual, actual, expected, expected)
-	}
 }
