@@ -35,6 +35,7 @@ type (
 		GetPullRequest(projectKey, repositorySlug, identifier string) (PullRequest, error)
 		GetRawFile(projectKey, repositorySlug, branch, filePath string) ([]byte, error)
 		CreatePullRequest(projectKey, repositorySlug, title, description, fromRef, toRef string, reviewers []string) (PullRequest, error)
+		UpdatePullRequest(projectKey, repositorySlug, identifier string, version int, title, description, toRef string, reviewers []string) (PullRequest, error)
 		DeleteBranch(projectKey, repositorySlug, branchName string) error
 		GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error)
 		GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error)
@@ -133,16 +134,18 @@ type (
 	}
 
 	PullRequest struct {
-		ID          int    `json:"id"`
-		Closed      bool   `json:"closed"`
-		Open        bool   `json:"open"`
-		State       string `json:"state"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		FromRef     Ref    `json:"fromRef"`
-		ToRef       Ref    `json:"toRef"`
-		CreatedDate int64  `json:"createdDate"`
-		UpdatedDate int64  `json:"updatedDate"`
+		ID          int        `id:"closed"`
+		Version     int        `json:"version"`
+		Closed      bool       `json:"closed"`
+		Open        bool       `json:"open"`
+		State       string     `json:"state"`
+		Title       string     `json:"title"`
+		Description string     `json:"description"`
+		FromRef     Ref        `json:"fromRef"`
+		ToRef       Ref        `json:"toRef"`
+		CreatedDate int64      `json:"createdDate"`
+		UpdatedDate int64      `json:"updatedDate"`
+		Reviewers   []Reviewer `json:"reviewers"`
 	}
 
 	Comment struct {
@@ -185,11 +188,15 @@ type (
 	}
 
 	PullRequestResource struct {
-		Title       string         `json:"title"`
-		Description string         `json:"description"`
-		FromRef     PullRequestRef `json:"fromRef"`
-		ToRef       PullRequestRef `json:"toRef"`
-		Reviewers   []Reviewer     `json:"reviewers"`
+		Version     int    `json:"version,omitempty"`
+		Title       string `json:"title,omitempty"`
+		Description string `json:"description,omitempty"`
+		// FromRef and ToRef should be PullRequestRef but there is interface{}
+		// for omitting empty values. encoding/json can't handle empty structs
+		// and omit them.
+		FromRef   interface{} `json:"fromRef,omitempty"`
+		ToRef     interface{} `json:"toRef,omitempty"`
+		Reviewers []Reviewer  `json:"reviewers,omitempty"`
 	}
 
 	CommentResource struct {
@@ -826,6 +833,87 @@ func (client Client) CreatePullRequest(projectKey, repositorySlug, title, descri
 			reason = "The resource was not found. Does the project key exist?"
 		case responseCode == http.StatusConflict:
 			reason = "A pull-request with same name already exists."
+		}
+		return PullRequest{}, errorResponse{StatusCode: responseCode, Reason: reason}
+	}
+
+	var t PullRequest
+	err = json.Unmarshal(data, &t)
+	if err != nil {
+		return PullRequest{}, err
+	}
+
+	return t, nil
+}
+
+// UpdatePullRequest update a pull request.
+func (client Client) UpdatePullRequest(projectKey, repositorySlug, identifier string, version int, title, description, toRef string, reviewers []string) (PullRequest, error) {
+	var revs []Reviewer
+	for _, rev := range reviewers {
+		revs = append(revs, Reviewer{
+			User: User{Name: rev},
+		})
+	}
+
+	pullRequestResource := PullRequestResource{
+		Version:     version,
+		Title:       title,
+		Description: description,
+		Reviewers:   revs,
+	}
+
+	if toRef != "" {
+		pullRequestResource.ToRef = PullRequestRef{
+			Id: toRef,
+			Repository: PullRequestRepository{
+				Slug: repositorySlug,
+				Project: PullRequestProject{
+					Key: projectKey,
+				},
+			},
+		}
+	}
+
+	reqBody, err := json.Marshal(pullRequestResource)
+	if err != nil {
+		return PullRequest{}, err
+	}
+
+	req, err := http.NewRequest(
+		"PUT",
+		fmt.Sprintf(
+			"%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%s",
+			client.baseURL.String(),
+			projectKey,
+			repositorySlug,
+			identifier,
+		),
+		bytes.NewBuffer(reqBody),
+	)
+	if err != nil {
+		return PullRequest{}, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-type", "application/json")
+	req.SetBasicAuth(client.userName, client.password)
+
+	responseCode, data, err := consumeResponse(req)
+	if err != nil {
+		return PullRequest{}, err
+	}
+
+	if responseCode != http.StatusOK {
+		var reason string = "unknown reason"
+		switch {
+		case responseCode == http.StatusBadRequest:
+			reason = "The pull-request was not updated due to a validation error."
+		case responseCode == http.StatusUnauthorized:
+			reason = "The currently authenticated user has insufficient permissions to edit a pull-request."
+		case responseCode == http.StatusNotFound:
+			reason = "The resource was not found. Does the project key exist?"
+		case responseCode == http.StatusConflict:
+			reason = "The pull-request was not updated due to a conflicts. Does the `from` and new `to` branch are different?"
 		}
 		return PullRequest{}, errorResponse{StatusCode: responseCode, Reason: reason}
 	}

@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-const createPullRequestResponse string = `
+const updatePullRequestResponse string = `
 {
-    "id": 2,
-    "version": 0,
+    "id": 1,
+    "version": 101,
     "title": "a title",
     "description": "a description",
     "state": "OPEN",
@@ -223,28 +223,23 @@ const createPullRequestResponse string = `
 }
 `
 
-type PullRequestTemplate struct {
-	Title       string
-	Description string
-}
+func TestUpdatePullRequest(t *testing.T) {
 
-func TestCreatePullRequest(t *testing.T) {
-
-	expectedRequestBody := `{"title":"a title","description":"a description","fromRef":{"id":"feature/file1","repository":{"slug":"bar","project":{"key":"proj"}}},"toRef":{"id":"develop","repository":{"slug":"bar","project":{"key":"proj"}}},"reviewers":[{"user":{"name":"bob"}},{"user":{"name":"bill"}}]}`
+	expectedRequestBody := `{"version":100,"title":"a title","description":"a description","toRef":{"id":"develop","repository":{"slug":"bar","project":{"key":"proj"}}},"reviewers":[{"user":{"name":"bob"}},{"user":{"name":"bill"}}]}`
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			t.Fatalf("wanted POST but found %s\n", r.Method)
+		if r.Method != "PUT" {
+			t.Fatalf("wanted PUT but found %s\n", r.Method)
 		}
 		url := *r.URL
-		if url.Path != "/rest/api/1.0/projects/proj/repos/bar/pull-requests" {
-			t.Fatalf("CreatePullRequest() URL path expected to be /rest/api/1.0/projects/proj/repos/bar/pull-requests but found %s\n", url.Path)
+		if url.Path != "/rest/api/1.0/projects/proj/repos/bar/pull-requests/1" {
+			t.Fatalf("UpdatePullRequest() URL path expected to be /rest/api/1.0/projects/proj/repos/bar/pull-requests/1 but found %s\n", url.Path)
 		}
 		if r.Header.Get("Accept") != "application/json" {
-			t.Fatalf("CreatePullRequest() expected request Accept header to be application/json but found %s\n", r.Header.Get("Accept"))
+			t.Fatalf("UpdatePullRequest() expected request Accept header to be application/json but found %s\n", r.Header.Get("Accept"))
 		}
 		if r.Header.Get("Authorization") != "Basic dTpw" {
-			t.Fatalf("Want  Basic dTpw but found %s\n", r.Header.Get("Authorization"))
+			t.Fatalf("Want Basic dTpw but found %s\n", r.Header.Get("Authorization"))
 		}
 
 		body, _ := ioutil.ReadAll(r.Body)
@@ -252,8 +247,8 @@ func TestCreatePullRequest(t *testing.T) {
 			t.Fatalf("Unexpected request body\n %s\n expected\n %s\n", body, expectedRequestBody)
 		}
 
-		w.WriteHeader(201)
-		fmt.Fprint(w, createPullRequestResponse)
+		w.WriteHeader(200)
+		fmt.Fprint(w, updatePullRequestResponse)
 	}))
 	defer testServer.Close()
 
@@ -261,13 +256,13 @@ func TestCreatePullRequest(t *testing.T) {
 	stashClient := NewClient("u", "p", url)
 
 	reviewers := []string{"bob", "bill"}
-	pullRequest, err := stashClient.CreatePullRequest("proj", "bar", "a title", "a description", "feature/file1", "develop", reviewers)
+	pullRequest, err := stashClient.UpdatePullRequest("proj", "bar", "1", 100, "a title", "a description", "develop", reviewers)
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
 
-	if pullRequest.ID != 2 {
-		t.Fatalf("Want 2 but got %v\n", pullRequest.ID)
+	if pullRequest.ID != 1 {
+		t.Fatalf("Want 1 but got %v\n", pullRequest.ID)
 	}
 	if pullRequest.Title != "a title" {
 		t.Fatalf("Want 'a title' but got %v\n", pullRequest.Title)
