@@ -266,18 +266,25 @@ func TestCreatePullRequest(t *testing.T) {
 		t.Fatalf("%v\n", err)
 	}
 
-	expect_to_equal(t, "ID", 2, pullRequest.ID)
-	expect_to_equal(t, "Title", "a title", pullRequest.Title)
-	expect_to_equal(t, "Description", "a description", pullRequest.Description)
-	expect_to_equal(t, "Open", true, pullRequest.Open)
-	expect_to_equal(t, "State", "OPEN", pullRequest.State)
-	expect_to_equal(t, "FromRef", Ref{"feature/file1"}, pullRequest.FromRef)
-	expect_to_equal(t, "ToRef", Ref{"develop"}, pullRequest.ToRef)
-
-}
-
-func expect_to_equal(t *testing.T, item string, expected interface{}, actual interface{}) {
-	if actual != expected {
-		t.Fatalf("expected %s to be <%T>%q got <%T>%q\n", item, actual, actual, expected, expected)
+	if pullRequest.ID != 2 {
+		t.Fatalf("Want 2 but got %v\n", pullRequest.ID)
+	}
+	if pullRequest.Title != "a title" {
+		t.Fatalf("Want 'a title' but got %v\n", pullRequest.Title)
+	}
+	if pullRequest.Description != "a description" {
+		t.Fatalf("Want 'a description' but got %v\n", pullRequest.Description)
+	}
+	if pullRequest.Open != true {
+		t.Fatalf("Want true but got %v\n", pullRequest.Open)
+	}
+	if pullRequest.State != "OPEN" {
+		t.Fatalf("Want OPEN but got %v\n", pullRequest.State)
+	}
+	if pullRequest.FromRef.DisplayID != "feature/file1" {
+		t.Fatalf("Want feature/file1 but got %v\n", pullRequest.FromRef)
+	}
+	if pullRequest.ToRef.DisplayID != "develop" {
+		t.Fatalf("Want develop but got %v\n", pullRequest.ToRef)
 	}
 }
