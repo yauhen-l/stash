@@ -99,6 +99,16 @@ func TestGetBranches500(t *testing.T) {
 			t.Fatalf("Want  Basic dTpw but found %s\n", r.Header.Get("Authorization"))
 		}
 		w.WriteHeader(500)
+		w.Write([]byte(`{
+        "errors": [
+            {
+                "context": null,
+                "message": "A detailed error message.",
+                "exceptionName": null
+            }
+        ]
+    }`))
+
 	}))
 	defer testServer.Close()
 

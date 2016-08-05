@@ -6,13 +6,13 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"time"
 
@@ -162,6 +162,14 @@ type (
 		error
 	}
 
+	stashError struct {
+		Errors []struct {
+			Context       string `json:"context"`
+			Message       string `json:"message"`
+			ExceptionName string `json:"exceptionName"`
+		} `json:"errors"`
+	}
+
 	// Pull Request Types
 
 	User struct {
@@ -288,7 +296,7 @@ func (client Client) GetRepositories() (map[int]Repository, error) {
 	repositories := make(map[int]Repository)
 	morePages := true
 	for morePages {
-		retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+		retry := retry.New(3, retry.DefaultBackoffFunc)
 		var data []byte
 		work := func() error {
 			req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/repos?start=%d&limit=%d", client.baseURL.String(), start, stashPageLimit), nil)
@@ -342,7 +350,7 @@ func (client Client) GetBranches(projectKey, repositorySlug string) (map[string]
 	morePages := true
 	for morePages {
 		var data []byte
-		retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+		retry := retry.New(3, retry.DefaultBackoffFunc)
 		workit := func() error {
 			req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/branches?start=%d&limit=%d", client.baseURL.String(), projectKey, repositorySlug, start, stashPageLimit), nil)
 			if err != nil {
@@ -393,7 +401,7 @@ func (client Client) GetTags(projectKey, repositorySlug string) (map[string]Tag,
 	morePages := true
 	for morePages {
 		var data []byte
-		retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+		retry := retry.New(3, retry.DefaultBackoffFunc)
 		work := func() error {
 			req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/tags?start=%d&limit=%d", client.baseURL.String(), projectKey, repositorySlug, start, stashPageLimit), nil)
 			if err != nil {
@@ -443,7 +451,7 @@ func (client Client) GetTags(projectKey, repositorySlug string) (map[string]Tag,
 
 // GetRepository returns a repository representation for the given Stash Project key and repository slug.
 func (client Client) GetRepository(projectKey, repositorySlug string) (Repository, error) {
-	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 
 	var r Repository
 	work := func() error {
@@ -536,7 +544,7 @@ func (client Client) CreateBranchRestriction(projectKey, repositorySlug, branch,
 }
 
 func (client Client) GetBranchRestrictions(projectKey, repositorySlug string) (BranchRestrictions, error) {
-	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 
 	var branchRestrictions BranchRestrictions
 	work := func() error {
@@ -576,7 +584,7 @@ func (client Client) GetBranchRestrictions(projectKey, repositorySlug string) (B
 
 // GetRepository returns a repository representation for the given Stash Project key and repository slug.
 func (client Client) DeleteBranchRestriction(projectKey, repositorySlug string, id int) error {
-	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 
 	work := func() error {
 		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/rest/branch-permissions/1.0/projects/%s/repos/%s/restricted/%d", client.baseURL.String(), projectKey, repositorySlug, id), nil)
@@ -615,7 +623,7 @@ func (client Client) GetPullRequests(projectKey, projectSlug, state string) ([]P
 	pullRequests := make([]PullRequest, 0)
 	morePages := true
 	for morePages {
-		retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+		retry := retry.New(3, retry.DefaultBackoffFunc)
 		var data []byte
 		work := func() error {
 			req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/pull-requests?state=%s&start=%d&limit=%d", client.baseURL.String(), projectKey, projectSlug, state, start, stashPageLimit), nil)
@@ -661,7 +669,7 @@ func (client Client) GetPullRequests(projectKey, projectSlug, state string) ([]P
 // GetPullRequest returns a pull request for a project/slug with specified
 // identifier.
 func (client Client) GetPullRequest(projectKey, projectSlug, identifier string) (PullRequest, error) {
-	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 	var data []byte
 	work := func() error {
 		req, err := http.NewRequest(
@@ -953,11 +961,11 @@ func (client Client) DeleteBranch(projectKey, repositorySlug, branchName string)
 			return errorResponse{StatusCode: responseCode, Reason: "(unhandled reason)"}
 		}
 	}
-	return retry.New(3*time.Second, 3, retry.DefaultBackoffFunc).Try(work)
+	return retry.New(3, retry.DefaultBackoffFunc).Try(work)
 }
 
 func (client Client) GetRawFile(repositoryProjectKey, repositorySlug, filePath, branch string) ([]byte, error) {
-	retry := retry.New(3*time.Second, 3, retry.DefaultBackoffFunc)
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 
 	var data []byte
 	work := func() error {
@@ -991,12 +999,7 @@ func (client Client) GetRawFile(repositoryProjectKey, repositorySlug, filePath, 
 
 // GetCommit returns a representation of the given commit hash.
 func (client Client) GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error) {
-	retry := retry.New(5*time.Second, 3, func(attempts uint) {
-		if attempts == 0 {
-			return
-		}
-		time.Sleep((1 << attempts) * 250 * time.Millisecond)
-	})
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 
 	var data []byte
 	work := func() error {
@@ -1042,12 +1045,7 @@ func (client Client) GetCommit(projectKey, repositorySlug, commitHash string) (C
 
 // GetCommits returns the commits between two hashes, inclusively.
 func (client Client) GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error) {
-	retry := retry.New(5*time.Second, 3, func(attempts uint) {
-		if attempts == 0 {
-			return
-		}
-		time.Sleep((1 << attempts) * 250 * time.Millisecond)
-	})
+	retry := retry.New(3, retry.DefaultBackoffFunc)
 
 	var data []byte
 	work := func() error {
@@ -1122,30 +1120,33 @@ func IsRepositoryNotFound(err error) bool {
 	return false
 }
 
-func consumeResponse(req *http.Request) (rc int, buffer []byte, err error) {
+func consumeResponse(req *http.Request) (int, []byte, error) {
 	response, err := httpClient.Do(req)
-
-	defer func() {
-		if response != nil && response.Body != nil {
-			response.Body.Close()
-		}
-		if e := recover(); e != nil {
-			trace := make([]byte, 10*1024)
-			_ = runtime.Stack(trace, false)
-			Log.Printf("%s", trace)
-			err = fmt.Errorf("%v", e)
-		}
-	}()
-
 	if err != nil {
-		panic(err)
+		return 0, nil, err
 	}
 
-	if data, err := ioutil.ReadAll(response.Body); err != nil {
-		panic(err)
-	} else {
-		return response.StatusCode, data, nil
+	data, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return 0, nil, err
 	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode >= 400 {
+		var errResponse stashError
+		if err := json.Unmarshal(data, &errResponse); err == nil {
+			var messages []string
+			for _, e := range errResponse.Errors {
+				messages = append(messages, e.Message)
+			}
+			return response.StatusCode, data, errors.New(strings.Join(messages, " "))
+		} else {
+			return 0, nil, err
+		}
+	}
+
+	return response.StatusCode, data, nil
 }
 
 // SshUrl extracts the SSH-based URL from the repository metadata.

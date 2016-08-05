@@ -123,6 +123,15 @@ func TestGetCommits(t *testing.T) {
 func TestGetCommits404(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
+		w.Write([]byte(`{
+        "errors": [
+            {
+                "context": null,
+                "message": "A detailed error message.",
+                "exceptionName": null
+            }
+        ]
+    }`))
 	}))
 	defer testServer.Close()
 
@@ -137,6 +146,15 @@ func TestGetCommits404(t *testing.T) {
 func TestGetCommits401(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
+		w.Write([]byte(`{
+        "errors": [
+            {
+                "context": null,
+                "message": "A detailed error message.",
+                "exceptionName": null
+            }
+        ]
+    }`))
 	}))
 	defer testServer.Close()
 
@@ -151,6 +169,15 @@ func TestGetCommits401(t *testing.T) {
 func TestGetCommits400(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
+		w.Write([]byte(`{
+        "errors": [
+            {
+                "context": null,
+                "message": "A detailed error message.",
+                "exceptionName": null
+            }
+        ]
+    }`))
 	}))
 	defer testServer.Close()
 

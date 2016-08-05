@@ -69,6 +69,15 @@ func TestGetBranchRestrictions(t *testing.T) {
 func TestGetBranchRestrictions404(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
+		w.Write([]byte(`{
+        "errors": [
+            {
+                "context": null,
+                "message": "A detailed error message.",
+                "exceptionName": null
+            }
+        ]
+    }`))
 	}))
 	defer testServer.Close()
 
@@ -83,6 +92,15 @@ func TestGetBranchRestrictions404(t *testing.T) {
 func TestGetBranchRestrictions401(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
+		w.Write([]byte(`{
+        "errors": [
+            {
+                "context": null,
+                "message": "A detailed error message.",
+                "exceptionName": null
+            }
+        ]
+    }`))
 	}))
 	defer testServer.Close()
 
