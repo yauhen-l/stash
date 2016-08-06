@@ -1128,7 +1128,7 @@ func consumeResponse(req *http.Request) (int, []byte, error) {
 
 	data, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return 0, nil, err
+		return response.StatusCode, nil, err
 	}
 
 	defer response.Body.Close()
@@ -1142,7 +1142,7 @@ func consumeResponse(req *http.Request) (int, []byte, error) {
 			}
 			return response.StatusCode, data, errors.New(strings.Join(messages, " "))
 		} else {
-			return 0, nil, err
+			return response.StatusCode, nil, err
 		}
 	}
 
