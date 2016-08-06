@@ -1,7 +1,9 @@
 Stash tools
 ===========
 
-Go package of Stash tools
+Go package of Stash tools.
+
+This library uses [glide](https://github.com/Masterminds/glide) for dependency management.
 
 ## Installation
 
