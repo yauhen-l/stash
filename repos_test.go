@@ -240,7 +240,7 @@ func TestGetRepositories500(t *testing.T) {
 			t.Fatalf("GetRepositories() expected request Accept header to be application/json but found %s\n", r.Header.Get("Accept"))
 		}
 		w.WriteHeader(500)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
         "errors": [
             {
                 "context": null,

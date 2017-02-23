@@ -1,5 +1,5 @@
 all:
 	go fmt
 	go vet
-	go test 
+	go test -v
 	go install -v
