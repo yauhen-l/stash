@@ -1126,7 +1126,7 @@ func (repo Repository) SshUrl() string {
 	return ""
 }
 
-// DeleteBranchRestriction deletes a branch restriction
+// DeclinePullRequest declines a pull request
 func (client Client) DeclinePullRequest(projectKey, repositorySlug string, pullRequestID, version int) error {
 	retry := retry.New(3, retry.DefaultBackoffFunc)
 	work := func() error {
