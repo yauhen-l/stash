@@ -99,7 +99,7 @@ func TestGetBranches500(t *testing.T) {
 			t.Fatalf("Want  Basic dTpw but found %s\n", r.Header.Get("Authorization"))
 		}
 		w.WriteHeader(500)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
         "errors": [
             {
                 "context": null,

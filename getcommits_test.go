@@ -32,7 +32,7 @@ func TestGetCommits(t *testing.T) {
 		if r.Header.Get("Authorization") != "Basic dTpw" {
 			t.Fatalf("Want Basic dTpw but found %s\n", r.Header.Get("Authorization"))
 		}
-		w.Write(
+		_, _ = w.Write(
 			[]byte(`{ "values": [{
 	  "id": "f94786782b2450a4e6a0d548e4c803692ca38b94",
 	  "displayId": "f947867",
@@ -123,7 +123,7 @@ func TestGetCommits(t *testing.T) {
 func TestGetCommits404(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
         "errors": [
             {
                 "context": null,
@@ -146,7 +146,7 @@ func TestGetCommits404(t *testing.T) {
 func TestGetCommits401(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
         "errors": [
             {
                 "context": null,
@@ -169,7 +169,7 @@ func TestGetCommits401(t *testing.T) {
 func TestGetCommits400(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(400)
-		w.Write([]byte(`{
+		_, _ = w.Write([]byte(`{
         "errors": [
             {
                 "context": null,
