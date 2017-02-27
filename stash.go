@@ -241,7 +241,7 @@ var (
 )
 
 var (
-	httpClient *http.Client = &http.Client{Timeout: 10 * time.Second, Transport: httpTransport}
+	httpClient *http.Client = &http.Client{Timeout: 30 * time.Second, Transport: httpTransport}
 )
 
 func (e errorResponse) Error() string {
