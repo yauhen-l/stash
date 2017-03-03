@@ -23,23 +23,24 @@ var Log *log.Logger = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 
 type (
 	Stash interface {
-		CreateRepository(projectKey, slug string) (Repository, error)
-		GetRepositories() (map[int]Repository, error)
-		GetBranches(projectKey, repositorySlug string) (map[string]Branch, error)
-		GetTags(projectKey, repositorySlug string) (map[string]Tag, error)
 		CreateBranchRestriction(projectKey, repositorySlug, branch, user string) (BranchRestriction, error)
-		GetBranchRestrictions(projectKey, repositorySlug string) (BranchRestrictions, error)
-		DeleteBranchRestriction(projectKey, repositorySlug string, id int) error
-		GetRepository(projectKey, repositorySlug string) (Repository, error)
-		GetPullRequests(projectKey, repositorySlug, state string) ([]PullRequest, error)
-		GetPullRequest(projectKey, repositorySlug, identifier string) (PullRequest, error)
-		GetRawFile(projectKey, repositorySlug, branch, filePath string) ([]byte, error)
+		CreateComment(projectKey, repositorySlug, pullRequest, text string) (Comment, error)
 		CreatePullRequest(projectKey, repositorySlug, title, description, fromRef, toRef string, reviewers []string) (PullRequest, error)
-		UpdatePullRequest(projectKey, repositorySlug, identifier string, version int, title, description, toRef string, reviewers []string) (PullRequest, error)
+		CreateRepository(projectKey, slug string) (Repository, error)
+		DeclinePullRequest(projectKey, repositorySlug string, pullRequestID, pullRequestVersion int) error
 		DeleteBranch(projectKey, repositorySlug, branchName string) error
+		DeleteBranchRestriction(projectKey, repositorySlug string, id int) error
+		GetBranchRestrictions(projectKey, repositorySlug string) (BranchRestrictions, error)
+		GetBranches(projectKey, repositorySlug string) (map[string]Branch, error)
 		GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error)
 		GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error)
-		CreateComment(projectKey, repositorySlug, pullRequest, text string) (Comment, error)
+		GetPullRequest(projectKey, repositorySlug, identifier string) (PullRequest, error)
+		GetPullRequests(projectKey, repositorySlug, state string) ([]PullRequest, error)
+		GetRawFile(projectKey, repositorySlug, branch, filePath string) ([]byte, error)
+		GetRepositories() (map[int]Repository, error)
+		GetRepository(projectKey, repositorySlug string) (Repository, error)
+		GetTags(projectKey, repositorySlug string) (map[string]Tag, error)
+		UpdatePullRequest(projectKey, repositorySlug, identifier string, version int, title, description, toRef string, reviewers []string) (PullRequest, error)
 	}
 
 	Client struct {
@@ -240,7 +241,7 @@ var (
 )
 
 var (
-	httpClient *http.Client = &http.Client{Timeout: 10 * time.Second, Transport: httpTransport}
+	httpClient *http.Client = &http.Client{Timeout: 30 * time.Second, Transport: httpTransport}
 )
 
 func (e errorResponse) Error() string {
@@ -303,7 +304,6 @@ func (client Client) GetRepositories() (map[int]Repository, error) {
 			if err != nil {
 				return err
 			}
-			Log.Printf("stash.GetRepositories URL %s\n", req.URL)
 			req.Header.Set("Accept", "application/json")
 			// use credentials if we have them.  If not, the repository must be public.
 			if client.userName != "" && client.password != "" {
@@ -459,7 +459,6 @@ func (client Client) GetRepository(projectKey, repositorySlug string) (Repositor
 		if err != nil {
 			return err
 		}
-		Log.Printf("stash.GetRepository %s\n", req.URL)
 		req.Header.Set("Accept", "application/json")
 		// use credentials if we have them.  If not, the repository must be public.
 		if client.userName != "" && client.password != "" {
@@ -552,7 +551,6 @@ func (client Client) GetBranchRestrictions(projectKey, repositorySlug string) (B
 		if err != nil {
 			return err
 		}
-		Log.Printf("stash.GetBranchRestrictions %s\n", req.URL)
 		req.Header.Set("Accept", "application/json")
 		req.SetBasicAuth(client.userName, client.password)
 
@@ -582,7 +580,7 @@ func (client Client) GetBranchRestrictions(projectKey, repositorySlug string) (B
 	return branchRestrictions, retry.Try(work)
 }
 
-// GetRepository returns a repository representation for the given Stash Project key and repository slug.
+// DeleteBranchRestriction deletes a branch restriction
 func (client Client) DeleteBranchRestriction(projectKey, repositorySlug string, id int) error {
 	retry := retry.New(3, retry.DefaultBackoffFunc)
 
@@ -591,7 +589,6 @@ func (client Client) DeleteBranchRestriction(projectKey, repositorySlug string, 
 		if err != nil {
 			return err
 		}
-		Log.Printf("stash.DeleteBranchRestriction %s\n", req.URL)
 		req.Header.Set("Accept", "application/json")
 		req.SetBasicAuth(client.userName, client.password)
 
@@ -973,7 +970,6 @@ func (client Client) GetRawFile(repositoryProjectKey, repositorySlug, filePath, 
 		if err != nil {
 			return err
 		}
-		Log.Printf("stash.GetRawFile %s\n", req.URL)
 		req.SetBasicAuth(client.userName, client.password)
 
 		var responseCode int
@@ -1120,6 +1116,59 @@ func IsRepositoryNotFound(err error) bool {
 	return false
 }
 
+// SshUrl extracts the SSH-based URL from the repository metadata.
+func (repo Repository) SshUrl() string {
+	for _, clone := range repo.Links.Clones {
+		if clone.Name == "ssh" {
+			return clone.HREF
+		}
+	}
+	return ""
+}
+
+// DeclinePullRequest declines a pull request
+func (client Client) DeclinePullRequest(projectKey, repositorySlug string, pullRequestID, version int) error {
+	retry := retry.New(3, retry.DefaultBackoffFunc)
+	work := func() error {
+		req, err := http.NewRequest(
+			"POST",
+			fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/decline?version=%d", client.baseURL.String(), projectKey, repositorySlug, pullRequestID, version),
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/json")
+
+		// https://confluence.atlassian.com/cloudkb/xsrf-check-failed-when-calling-cloud-apis-826874382.html
+		req.Header.Set("X-Atlassian-Token", "no-check")
+
+		req.SetBasicAuth(client.userName, client.password)
+
+		responseCode, _, err := consumeResponse(req)
+		if err != nil {
+			return err
+		}
+
+		if responseCode != http.StatusOK {
+			reason := "unhandled reason"
+			switch {
+			case responseCode == http.StatusUnauthorized:
+				reason = "Unauthorized"
+			case responseCode == http.StatusNotFound:
+				reason = "Not found"
+			case responseCode == http.StatusConflict:
+				reason = "Conflict"
+			}
+			return errorResponse{StatusCode: responseCode, Reason: reason}
+		}
+
+		return nil
+	}
+
+	return retry.Try(work)
+}
+
 func consumeResponse(req *http.Request) (int, []byte, error) {
 	response, err := httpClient.Do(req)
 	if err != nil {
@@ -1131,9 +1180,19 @@ func consumeResponse(req *http.Request) (int, []byte, error) {
 		return response.StatusCode, nil, err
 	}
 
-	defer response.Body.Close()
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			log.Printf("error closing response body: %v\n", err)
+		}
+	}()
 
 	if response.StatusCode >= 400 {
+		// https://jira.xoom.com/browse/AS-42
+		contentType := response.Header.Get("Content-type")
+		if !strings.HasPrefix(contentType, "application/json") {
+			return response.StatusCode, data, nil
+		}
+
 		var errResponse stashError
 		if err := json.Unmarshal(data, &errResponse); err == nil {
 			var messages []string
@@ -1141,20 +1200,8 @@ func consumeResponse(req *http.Request) (int, []byte, error) {
 				messages = append(messages, e.Message)
 			}
 			return response.StatusCode, data, errors.New(strings.Join(messages, " "))
-		} else {
-			return response.StatusCode, nil, err
 		}
+		return response.StatusCode, nil, err
 	}
-
 	return response.StatusCode, data, nil
-}
-
-// SshUrl extracts the SSH-based URL from the repository metadata.
-func (repo Repository) SshUrl() string {
-	for _, clone := range repo.Links.Clones {
-		if clone.Name == "ssh" {
-			return clone.HREF
-		}
-	}
-	return ""
 }
