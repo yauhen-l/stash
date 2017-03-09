@@ -187,13 +187,13 @@ type (
 	// Pull Request Types
 
 	User struct {
-		ID           int    `json:"id"`
+		ID           int    `json:"id,omitempty"`
 		Name         string `json:"name"`
-		EmailAddress string `json:"emailAddress"`
-		DisplayName  string `json:"displayName"`
-		Active       bool   `json:"active"`
-		Slug         string `json:"slug"`
-		Type         string `json:"type"`
+		EmailAddress string `json:"emailAddress,omitempty"`
+		DisplayName  string `json:"displayName,omitempty"`
+		Active       bool   `json:"active,omitempty"`
+		Slug         string `json:"slug,omitempty"`
+		Type         string `json:"type,omitempty"`
 	}
 
 	Author struct {
@@ -205,7 +205,7 @@ type (
 
 	Reviewer struct {
 		User   User   `json:"user"`
-		Status string `json:"status"`
+		Status string `json:"status,omitempty"`
 	}
 
 	PullRequestProject struct {
