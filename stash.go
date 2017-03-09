@@ -25,6 +25,7 @@ type (
 	Stash interface {
 		CreateBranchRestriction(projectKey, repositorySlug, branch, user string) (BranchRestriction, error)
 		CreateComment(projectKey, repositorySlug, pullRequest, text string) (Comment, error)
+		GetComments(projectKey, repositorySlug, pullRequest, path string) ([]Comment, error)
 		CreatePullRequest(projectKey, repositorySlug, title, description, fromRef, toRef string, reviewers []string) (PullRequest, error)
 		CreateRepository(projectKey, slug string) (Repository, error)
 		DeclinePullRequest(projectKey, repositorySlug string, pullRequestID, pullRequestVersion int) error
@@ -35,9 +36,11 @@ type (
 		GetCommit(projectKey, repositorySlug, commitHash string) (Commit, error)
 		GetCommits(projectKey, repositorySlug, commitSinceHash string, commitUntilHash string) (Commits, error)
 		GetPullRequest(projectKey, repositorySlug, identifier string) (PullRequest, error)
+		GetPullRequestChanges(projectKey, repositorySlug string, prID int) ([]string, error)
 		GetPullRequests(projectKey, repositorySlug, state string) ([]PullRequest, error)
 		GetRawFile(projectKey, repositorySlug, branch, filePath string) ([]byte, error)
 		GetRepositories() (map[int]Repository, error)
+		GetRecentRepositories() (map[int]Repository, error)
 		GetRepository(projectKey, repositorySlug string) (Repository, error)
 		GetTags(projectKey, repositorySlug string) (map[string]Tag, error)
 		UpdatePullRequest(projectKey, repositorySlug, identifier string, version int, title, description, toRef string, reviewers []string) (PullRequest, error)
@@ -147,10 +150,20 @@ type (
 		CreatedDate int64      `json:"createdDate"`
 		UpdatedDate int64      `json:"updatedDate"`
 		Reviewers   []Reviewer `json:"reviewers"`
+		Author      Author     `json:"author"`
+		Links       struct {
+			Self []struct {
+				Href string `json:"href"`
+			} `json:"self"`
+		} `json:"links"`
 	}
 
 	Comment struct {
-		ID int `json:"id"`
+		ID       int       `json:"id"`
+		Text     string    `json:"text"`
+		Author   User      `json:"author"`
+		Anchor   Anchor    `json:"anchor,omitempty"`
+		Comments []Comment `json:"comments"`
 	}
 
 	Ref struct {
@@ -174,11 +187,25 @@ type (
 	// Pull Request Types
 
 	User struct {
-		Name string `json:"name"`
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		EmailAddress string `json:"emailAddress"`
+		DisplayName  string `json:"displayName"`
+		Active       bool   `json:"active"`
+		Slug         string `json:"slug"`
+		Type         string `json:"type"`
+	}
+
+	Author struct {
+		User     User   `json:"user"`
+		Role     string `json:"role"`
+		Approved bool   `json:"approved"`
+		Status   string `json:"status"`
 	}
 
 	Reviewer struct {
-		User User `json:"user"`
+		User   User   `json:"user"`
+		Status string `json:"status"`
 	}
 
 	PullRequestProject struct {
@@ -210,6 +237,11 @@ type (
 
 	CommentResource struct {
 		Text string `json:"text"`
+	}
+
+	Anchor struct {
+		Path    string `json:"path"`
+		SrcPath string `json:"srcPath"`
 	}
 
 	Commit struct {
@@ -301,6 +333,57 @@ func (client Client) GetRepositories() (map[int]Repository, error) {
 		var data []byte
 		work := func() error {
 			req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/repos?start=%d&limit=%d", client.baseURL.String(), start, stashPageLimit), nil)
+			if err != nil {
+				return err
+			}
+			req.Header.Set("Accept", "application/json")
+			// use credentials if we have them.  If not, the repository must be public.
+			if client.userName != "" && client.password != "" {
+				req.SetBasicAuth(client.userName, client.password)
+			}
+
+			var responseCode int
+			responseCode, data, err = consumeResponse(req)
+			if err != nil {
+				return err
+			}
+			if responseCode != http.StatusOK {
+				var reason string = "unhandled reason"
+				switch {
+				case responseCode == http.StatusBadRequest:
+					reason = "Bad request."
+				}
+				return errorResponse{StatusCode: responseCode, Reason: reason}
+			}
+			return nil
+		}
+		if err := retry.Try(work); err != nil {
+			return nil, err
+		}
+
+		var r Repositories
+		err := json.Unmarshal(data, &r)
+		if err != nil {
+			return nil, err
+		}
+		for _, repo := range r.Repository {
+			repositories[repo.ID] = repo
+		}
+		morePages = !r.IsLastPage
+		start = r.NextPageStart
+	}
+	return repositories, nil
+}
+
+func (client Client) GetRecentRepositories() (map[int]Repository, error) {
+	start := 0
+	repositories := make(map[int]Repository)
+	morePages := true
+	for morePages {
+		retry := retry.New(3, retry.DefaultBackoffFunc)
+		var data []byte
+		work := func() error {
+			req, err := http.NewRequest("GET", fmt.Sprintf("%s/rest/api/1.0/profile/recent/repos?start=%d&limit=%d", client.baseURL.String(), start, stashPageLimit), nil)
 			if err != nil {
 				return err
 			}
@@ -718,6 +801,71 @@ func (client Client) GetPullRequest(projectKey, projectSlug, identifier string) 
 	return r, nil
 }
 
+func (client Client) GetPullRequestChanges(projectKey, repositorySlug string, prID int) ([]string, error) {
+	retry := retry.New(3, retry.DefaultBackoffFunc)
+	var data []byte
+	work := func() error {
+		req, err := http.NewRequest(
+			"GET",
+			fmt.Sprintf(
+				"%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%d/changes",
+				client.baseURL.String(), projectKey, repositorySlug, prID,
+			),
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Accept", "application/json")
+		// use credentials if we have them.  If not, the repository must be public.
+		if client.userName != "" && client.password != "" {
+			req.SetBasicAuth(client.userName, client.password)
+		}
+
+		var responseCode int
+		responseCode, data, err = consumeResponse(req)
+		if err != nil {
+			return err
+		}
+		if responseCode != http.StatusOK {
+			var reason string = "unhandled reason"
+			switch {
+			case responseCode == http.StatusBadRequest:
+				reason = "Bad request."
+			case responseCode == http.StatusUnauthorized:
+				reason = "The currently authenticated user has insufficient permissions to see a pull request."
+			case responseCode == http.StatusNotFound:
+				reason = "The resource was not found. Does the project key exist?"
+			}
+			return errorResponse{StatusCode: responseCode, Reason: reason}
+		}
+		return nil
+	}
+	if err := retry.Try(work); err != nil {
+		return nil, err
+	}
+
+	var r struct {
+		Values []struct {
+			Path struct {
+				ToString string `json:"toString"`
+			} `json:"path"`
+		} `json:"values"`
+	}
+
+	err := json.Unmarshal(data, &r)
+	if err != nil {
+		return nil, err
+	}
+
+	files := make([]string, 0, len(r.Values))
+	for _, v := range r.Values {
+		files = append(files, v.Path.ToString)
+	}
+
+	return files, nil
+}
+
 // CreateComment creates a comment for a pull-request.
 func (client Client) CreateComment(projectKey, repositorySlug, pullRequest, text string) (Comment, error) {
 	resource := CommentResource{
@@ -773,6 +921,58 @@ func (client Client) CreateComment(projectKey, repositorySlug, pullRequest, text
 	}
 
 	return t, nil
+}
+
+// CreateComment creates a comment for a pull-request.
+func (client Client) GetComments(projectKey, repositorySlug, pullRequest, path string) ([]Comment, error) {
+	req, err := http.NewRequest(
+		"GET",
+		fmt.Sprintf(
+			"%s/rest/api/1.0/projects/%s/repos/%s/pull-requests/%s/comments?path=%s",
+			client.baseURL.String(),
+			projectKey,
+			repositorySlug,
+			pullRequest,
+			path,
+		),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-type", "application/json")
+	req.SetBasicAuth(client.userName, client.password)
+
+	responseCode, data, err := consumeResponse(req)
+	if err != nil {
+		return nil, err
+	}
+	if responseCode != http.StatusOK {
+		var reason string = "unknown reason"
+		switch {
+		case responseCode == http.StatusBadRequest:
+			reason = "Cannot get comments due to a validation error."
+		case responseCode == http.StatusUnauthorized:
+			reason = "The currently authenticated user has insufficient permissions to get comments."
+		case responseCode == http.StatusNotFound:
+			reason = "The resource was not found. Does the project key exist?"
+		}
+
+		return nil, errorResponse{StatusCode: responseCode, Reason: reason}
+	}
+
+	var resp struct {
+		Values []Comment `json:"values"`
+	}
+
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Values, nil
 }
 
 // CreatePullRequest creates a pull request between branches.
